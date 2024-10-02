@@ -1,7 +1,7 @@
 from flask import Flask, request, redirect, url_for, render_template_string
-import pandas as pd
-from datetime import datetime
+from openpyxl import load_workbook
 from io import BytesIO
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -79,32 +79,31 @@ def upload():
     if file.filename == '':
         return 'No selected file'
     if file:
-        # Procesar el archivo Excel directamente desde la memoria
-        df = pd.read_excel(BytesIO(file.read()), engine='openpyxl')
-        # Guardar el DataFrame en una variable global para su uso posterior
-        global uploaded_df
-        uploaded_df = df
+        # Cargar el archivo Excel en memoria
+        wb = load_workbook(filename=BytesIO(file.read()), data_only=True)
+        # Guardar el workbook en una variable global para su uso posterior
+        global uploaded_wb
+        uploaded_wb = wb
         return redirect(url_for('display_data'))
 
 @app.route('/data', methods=['GET', 'POST'])
 def display_data():
-    # Utilizar el DataFrame previamente subido
-    if 'uploaded_df' not in globals():
+    # Verificar si el archivo ha sido subido
+    if 'uploaded_wb' not in globals():
         return redirect(url_for('upload_file'))
 
-    df = uploaded_df
+    wb = uploaded_wb
+    sheet = wb.active
 
-    # Aplicar filtro de ubicación si se envía desde el formulario
+    # Leer los datos de la hoja de cálculo
+    data = []
+    for row in sheet.iter_rows(min_row=2, values_only=True):  # Asumiendo que la primera fila es el encabezado
+        data.append(row)
+
+    # Aplicar filtro si se envía desde el formulario
     location_filter = request.form.get('location_filter')
     if location_filter:
-        df = df[df['LOCATION'].str.split().str[0].str.lower() == location_filter.lower()]
-
-    # Selección de las columnas requeridas
-    columns = ['LOCATION', 'Google map', 'Pictures', 'Real Estate ad', 'net rent / month', 'TOTAL SQM OUTDOOR + INDOOR', 'Estimated # parking spots outdoor', '# parking spaces for showroom', 'Rent/sqm', '€/parking spot', 'Flexicar Around? Insert in comments which one and driving time', 'OcasionPlus Around? Insert in comments which one and driving time', 'CTC >10 min?']
-    df_selected = df[columns]
-
-    # Creación de nueva columna Total Parking spots
-    df_selected['Total Parking spots'] = df_selected['Estimated # parking spots outdoor'] + df_selected['# parking spaces for showroom']
+        data = [row for row in data if row[0] and location_filter.lower() in row[0].lower()]
 
     # Construcción de HTML para mostrar la tabla con diseño responsive y filtro
     html_table = '''
@@ -152,16 +151,6 @@ def display_data():
         a:hover {
             text-decoration: underline;
         }
-        .details {
-            display: none;
-            padding-top: 10px;
-        }
-        .toggle-button {
-            cursor: pointer;
-            color: #ff6200;
-            font-weight: bold;
-            text-decoration: underline;
-        }
         .filter-form {
             text-align: left;
             margin-bottom: 20px;
@@ -193,11 +182,6 @@ def display_data():
         .filter-form input[type=submit]:hover {
             background-color: #e55b00;
         }
-        @media screen and (max-width: 768px) {
-            table, th, td {
-                font-size: 14px;
-            }
-        }
     </style>
     <div class="container">
         <form method="post" class="filter-form">
@@ -214,58 +198,33 @@ def display_data():
                 <th>Real estate ad</th>
                 <th>Net rent / month</th>
                 <th>Total sqm outdoor + indoor</th>
-                <th>Total parking spots</th>
+                <th>Estimated # parking spots outdoor</th>
+                <th># parking spaces for showroom</th>
                 <th>Rent/sqm</th>
                 <th>€/parking spot</th>
-                <th style="width: 15%;">+ info</th>
             </tr>
     '''
 
-    for index, row in df_selected.iterrows():
-        google_map_link = f'<a href="{row["Google map"]}" target="_blank">Link</a>' if pd.notna(row["Google map"]) else 'N/A'
-        pictures_link = f'<a href="{row["Pictures"]}" target="_blank">Link</a>' if pd.notna(row["Pictures"]) else 'N/A'
-        real_estate_link = f'<a href="{row["Real Estate ad"]}" target="_blank">Link</a>' if pd.notna(row["Real Estate ad"]) else 'N/A'
-
-        flexicar_link = f'<a href="{row["Flexicar Around? Insert in comments which one and driving time"]}" target="_blank">Link</a>' if pd.notna(row["Flexicar Around? Insert in comments which one and driving time"]) else 'N/A'
-        ocasionplus_link = f'<a href="{row["OcasionPlus Around? Insert in comments which one and driving time"]}" target="_blank">Link</a>' if pd.notna(row["OcasionPlus Around? Insert in comments which one and driving time"]) else 'N/A'
-        ctc_info = row['CTC >10 min?'] if pd.notna(row['CTC >10 min?']) else 'N/A'
-
+    for index, row in enumerate(data):
         html_table += f'''
             <tr>
                 <td>{index + 1}</td>
-                <td>{row['LOCATION']}</td>
-                <td>{google_map_link}</td>
-                <td>{pictures_link}</td>
-                <td>{real_estate_link}</td>
-                <td>{row['net rent / month']}</td>
-                <td>{row['TOTAL SQM OUTDOOR + INDOOR']}</td>
-                <td>{row['Total Parking spots']}</td>
-                <td>{row['Rent/sqm']}</td>
-                <td>{row['€/parking spot']}</td>
-                <td>
-                    <span class="toggle-button" onclick="toggleDetails({index})">+ Info</span>
-                    <div id="details-{index}" class="details">
-                        <p><strong>Flexicar:</strong> {flexicar_link}</p>
-                        <p><strong>OcasionPlus:</strong> {ocasionplus_link}</p>
-                        <p><strong>CTC >10 min?</strong> {ctc_info}</p>
-                    </div>
-                </td>
+                <td>{row[0]}</td>
+                <td>{row[1]}</td>
+                <td>{row[2]}</td>
+                <td>{row[3]}</td>
+                <td>{row[4]}</td>
+                <td>{row[5]}</td>
+                <td>{row[6]}</td>
+                <td>{row[7]}</td>
+                <td>{row[8]}</td>
+                <td>{row[9]}</td>
             </tr>
         '''
 
     html_table += '''
         </table>
     </div>
-    <script>
-        function toggleDetails(index) {
-            var details = document.getElementById('details-' + index);
-            if (details.style.display === 'none' || details.style.display === '') {
-                details.style.display = 'block';
-            } else {
-                details.style.display = 'none';
-            }
-        }
-    </script>
     '''
 
     # Obtención de la fecha actual en formato dd/mm/yyyy
