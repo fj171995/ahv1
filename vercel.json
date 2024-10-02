@@ -1,10 +1,9 @@
 {
-    "version": 2,
-    "builds": [
-      { "src": "AH_Potential_Locations.py", "use": "@vercel/python" }
-    ],
-    "routes": [
-      { "src": "/(.*)", "dest": "AH_Potential_Locations.py" }
-    ]
-  }
-  
+  "version": 2,
+  "builds": [
+    { "src": "AH_Potential_Locations.py", "use": "@vercel/python" }
+  ],
+  "routes": [
+    { "src": "/(.*)", "dest": "AH_Potential_Locations.py" }
+  ]
+}
