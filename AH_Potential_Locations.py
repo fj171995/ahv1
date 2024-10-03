@@ -124,6 +124,9 @@ def display_data():
     if location_filter:
         data = [row for row in data if row[0] and location_filter.lower() in row[0].lower()]
 
+    # Determinar si se muestra el botón "Generate Report"
+    show_generate_report = request.args.get('show_generate_report', 'true').lower() == 'true'
+
     # Construcción de HTML para mostrar la tabla con diseño responsive y filtro
     html_table = '''
     <style>
@@ -242,6 +245,7 @@ def display_data():
         function generateReport() {
             const urlParams = new URLSearchParams(window.location.search);
             urlParams.set('location_filter', document.getElementById('location_filter').value);
+            urlParams.set('show_generate_report', 'false');
             const reportUrl = window.location.origin + window.location.pathname + '?' + urlParams.toString();
             prompt('Shareable Report URL:', reportUrl);
         }
@@ -271,7 +275,7 @@ def display_data():
     for index, row in enumerate(data):
         expandable_row_id = f"expandable-row-{index}"
         html_table += f'''
-            <tr onclick="toggleRow('{expandable_row_id}')">
+            <tr>
                 <td>{index + 1}</td>
                 <td>{row[0]}</td>
                 <td>{row[1]}</td>
@@ -282,7 +286,7 @@ def display_data():
                 <td>{row[6]}</td>
                 <td>{row[7]}</td>
                 <td>{row[8]}</td>
-                <td class="clickable-info">+info</td>
+                <td class="clickable-info" onclick="toggleRow('{expandable_row_id}')">+info</td>
             </tr>
             <tr id="{expandable_row_id}" class="expandable-row">
                 <td colspan="11" class="expanded-content">
@@ -296,7 +300,14 @@ def display_data():
 
     html_table += '''
         </table>
+    '''
+
+    if show_generate_report:
+        html_table += '''
         <button class="generate-report-button" onclick="generateReport()">Generate Report</button>
+        '''
+
+    html_table += '''
     </div>
     '''
 
