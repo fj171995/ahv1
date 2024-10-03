@@ -99,17 +99,17 @@ def display_data():
     data = []
     for row in sheet.iter_rows(min_row=2, values_only=True):  # Asumiendo que la primera fila es el encabezado
         location = row[9]  # Columna J
-        google_map = f'<a href="{row[14]}">Link</a>' if row[14] else 'Missing'  # Columna O
-        pictures = f'<a href="{row[15]}">Link</a>' if row[15] else 'Missing'  # Columna P
-        real_estate_ad = f'<a href="{row[16]}">Link</a>' if row[16] else 'Missing'  # Columna Q
+        google_map = f'<a href="{row[14]}" target="_blank">Link</a>' if row[14] else 'Missing'  # Columna O
+        pictures = f'<a href="{row[15]}" target="_blank">Link</a>' if row[15] else 'Missing'  # Columna P
+        real_estate_ad = f'<a href="{row[16]}" target="_blank">Link</a>' if row[16] else 'Missing'  # Columna Q
         net_rent_month = row[21]  # Columna V
         total_sqm = row[27]  # Columna AB
         estimated_parking_spots = row[41]  # Columna AP
         rent_per_sqm = row[39]  # Columna AN
         cost_per_parking_spot = row[1]  # Columna B
-        flexicar = f'<a href="{row[3]}">Link</a>' if row[3] else 'Missing'  # Columna D
-        ocasionplus = f'<a href="{row[4]}">Link</a>' if row[4] else 'Missing'  # Columna E
-        ctc = f'<a href="{row[5]}">Link</a>' if row[5] else 'Missing'  # Columna F
+        flexicar = f'<a href="{row[3]}" target="_blank">Link</a>' if row[3] else 'Missing'  # Columna D
+        ocasionplus = f'<a href="{row[4]}" target="_blank">Link</a>' if row[4] else 'Missing'  # Columna E
+        ctc = f'<a href="{row[5]}" target="_blank">Link</a>' if row[5] else 'Missing'  # Columna F
         comments = row[40] if row[40] else 'No comments available'  # Columna AO
 
         data.append((
