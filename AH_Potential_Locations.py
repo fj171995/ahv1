@@ -1,30 +1,12 @@
-import os
 from flask import Flask, request, redirect, url_for, render_template_string
-import pandas as pd  # type: ignore
+from openpyxl import load_workbook
+from io import BytesIO
 from datetime import datetime
 
 app = Flask(__name__)
 
-# Ruta principal redirigida a la página de carga del archivo
 @app.route('/')
-def index():
-    return redirect(url_for('upload_file'))
-
-@app.route('/upload', methods=['GET', 'POST'])
 def upload_file():
-    if request.method == 'POST':
-        if 'file' not in request.files:
-            return 'No file part'
-        file = request.files['file']
-        if file.filename == '':
-            return 'No selected file'
-        if file:
-            # Leer el archivo Excel directamente en Pandas
-            df = pd.read_excel(file, engine='openpyxl')
-            # Guardar el DataFrame en una variable global para su uso en la página de reporte
-            global df_selected
-            df_selected = df.copy()
-            return redirect(url_for('report'))
     return render_template_string('''
     <!doctype html>
     <html lang="es">
@@ -79,7 +61,7 @@ def upload_file():
     <body>
         <div class="container">
             <h1>Sube el archivo Excel</h1>
-            <form method="post" enctype="multipart/form-data">
+            <form method="post" enctype="multipart/form-data" action="/upload">
                 <input type="file" name="file" required>
                 <br>
                 <input type="submit" value="Subir archivo">
@@ -89,27 +71,60 @@ def upload_file():
     </html>
     ''')
 
-@app.route('/report', methods=['GET'])
-def report():
-    # Verificar si el dataframe existe
-    if 'df_selected' not in globals():
+@app.route('/upload', methods=['POST'])
+def upload():
+    if 'file' not in request.files:
+        return 'No file part'
+    file = request.files['file']
+    if file.filename == '':
+        return 'No selected file'
+    if file:
+        # Cargar el archivo Excel en memoria
+        wb = load_workbook(filename=BytesIO(file.read()), data_only=True)
+        # Guardar el workbook en una variable global para su uso posterior
+        global uploaded_wb
+        uploaded_wb = wb
+        return redirect(url_for('display_data'))
+
+@app.route('/data', methods=['GET', 'POST'])
+def display_data():
+    # Verificar si el archivo ha sido subido
+    if 'uploaded_wb' not in globals():
         return redirect(url_for('upload_file'))
 
-    # Seleccionar las columnas requeridas
-    columns = [
-        'LOCATION', 'Google map', 'Pictures', 'Real Estate ad', 'net rent / month', 
-        'TOTAL SQM OUTDOOR + INDOOR', 'Estimated # parking spots outdoor', 
-        '# parking spaces for showroom', 'Rent/sqm', '€/parking spot', 
-        'Flexicar Around? Insert in comments which one and driving time', 
-        'OcasionPlus Around? Insert in comments which one and driving time', 
-        'CTC >10 min?'
-    ]
-    df = df_selected[columns]
+    wb = uploaded_wb
+    sheet = wb.active
 
-    # Crear nueva columna para el total de plazas de aparcamiento
-    df['Total Parking spots'] = df['Estimated # parking spots outdoor'] + df['# parking spaces for showroom']
+    # Leer los datos de la hoja de cálculo
+    data = []
+    for row in sheet.iter_rows(min_row=2, values_only=True):  # Asumiendo que la primera fila es el encabezado
+        location = row[9]  # Columna J
+        google_map = f'<a href="{row[14]}">Link</a>' if row[14] else 'Missing'  # Columna O
+        pictures = f'<a href="{row[15]}">Link</a>' if row[15] else 'Missing'  # Columna P
+        real_estate_ad = f'<a href="{row[16]}">Link</a>' if row[16] else 'Missing'  # Columna Q
+        net_rent_month = row[21]  # Columna V
+        total_sqm = row[27]  # Columna AB
+        estimated_parking_spots = row[41]  # Columna AP
+        rent_per_sqm = row[39]  # Columna AN
+        cost_per_parking_spot = row[1]  # Columna B
+        flexicar = f'<a href="{row[3]}">Link</a>' if row[3] else 'Missing'  # Columna D
+        ocasionplus = f'<a href="{row[4]}">Link</a>' if row[4] else 'Missing'  # Columna E
+        ctc = f'<a href="{row[5]}">Link</a>' if row[5] else 'Missing'  # Columna F
+        comments = row[40] if row[40] else 'No comments available'  # Columna AO
 
-    # Construir HTML para la tabla
+        data.append((
+            location, google_map, pictures, real_estate_ad,
+            net_rent_month, total_sqm, estimated_parking_spots,
+            rent_per_sqm, cost_per_parking_spot,
+            flexicar, ocasionplus, ctc, comments
+        ))
+
+    # Aplicar filtro si se envía desde el formulario
+    location_filter = request.args.get('location_filter', '')
+    if location_filter:
+        data = [row for row in data if row[0] and location_filter.lower() in row[0].lower()]
+
+    # Construcción de HTML para mostrar la tabla con diseño responsive y filtro
     html_table = '''
     <style>
         body {
@@ -155,25 +170,88 @@ def report():
         a:hover {
             text-decoration: underline;
         }
-        .details {
-            display: none;
-            padding-top: 10px;
+        .filter-form {
+            text-align: left;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background-color: #007bff;
+            padding: 10px;
+            border-radius: 5px;
+            color: white;
         }
-        .toggle-button {
+        .filter-form label {
+            font-weight: bold;
+        }
+        .filter-form input[type=text] {
+            padding: 5px;
+            border: none;
+            border-radius: 3px;
+        }
+        .filter-form input[type=submit] {
+            background-color: #ff6200;
+            color: #ffffff;
+            padding: 5px 10px;
+            border: none;
+            border-radius: 5px;
             cursor: pointer;
+            font-weight: bold;
+        }
+        .filter-form input[type=submit]:hover {
+            background-color: #e55b00;
+        }
+        .expandable-row {
+            display: none;
+            background-color: #f9f9f9;
+        }
+        .expanded-content {
+            padding: 15px;
+            text-align: left;
+            color: #333; /* Color oscuro para mejor visibilidad */
+        }
+        .clickable-info {
             color: #ff6200;
             font-weight: bold;
-            text-decoration: underline;
+            cursor: pointer;
         }
-        @media screen and (max-width: 768px) {
-            table, th, td {
-                font-size: 14px;
-            }
+        .generate-report-button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: #ffffff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .generate-report-button:hover {
+            background-color: #0056b3;
         }
     </style>
+    <script>
+        function toggleRow(id) {
+            var row = document.getElementById(id);
+            if (row.style.display === "none" || row.style.display === "") {
+                row.style.display = "table-row";
+            } else {
+                row.style.display = "none";
+            }
+        }
+        
+        function generateReport() {
+            const urlParams = new URLSearchParams(window.location.search);
+            urlParams.set('location_filter', document.getElementById('location_filter').value);
+            const reportUrl = window.location.origin + window.location.pathname + '?' + urlParams.toString();
+            prompt('Shareable Report URL:', reportUrl);
+        }
+    </script>
     <div class="container">
-        <h1>Report AH Potential Locations</h1>
-        <h2>Fecha: ''' + datetime.now().strftime("%d/%m/%Y") + '''</h2>
+        <form method="get" class="filter-form">
+            <label for="location_filter">Filter Location:</label>
+            <input type="text" name="location_filter" id="location_filter" placeholder="Location">
+            <input type="submit" value="Apply">
+        </form>
         <table>
             <tr>
                 <th>#</th>
@@ -182,64 +260,70 @@ def report():
                 <th>Pictures</th>
                 <th>Real estate ad</th>
                 <th>Net rent / month</th>
-                <th>Total sqm outdoor + indoor</th>
-                <th>Total parking spots</th>
+                <th>Total sqm (outdoor + indoor)</th>
+                <th>Estimated # parking spots</th>
                 <th>Rent/sqm</th>
                 <th>€/parking spot</th>
-                <th style="width: 15%;">+ info</th>
+                <th>+Info</th>
             </tr>
     '''
 
-    for index, row in df.iterrows():
-        row_number = index + 1
-        google_map_link = f'<a href="{row["Google map"]}" target="_blank">Link</a>' if pd.notna(row["Google map"]) else 'N/A'
-        pictures_link = f'<a href="{row["Pictures"]}" target="_blank">Link</a>' if pd.notna(row["Pictures"]) else 'N/A'
-        real_estate_link = f'<a href="{row["Real Estate ad"]}" target="_blank">Link</a>' if pd.notna(row["Real Estate ad"]) else 'N/A'
-
-        flexicar_link = f'<a href="{row["Flexicar Around? Insert in comments which one and driving time"]}" target="_blank">Link</a>' if pd.notna(row["Flexicar Around? Insert in comments which one and driving time"]) else 'N/A'
-        ocasionplus_link = f'<a href="{row["OcasionPlus Around? Insert in comments which one and driving time"]}" target="_blank">Link</a>' if pd.notna(row["OcasionPlus Around? Insert in comments which one and driving time"]) else 'N/A'
-        ctc_info = row['CTC >10 min?'] if pd.notna(row['CTC >10 min?']) else 'N/A'
-
+    for index, row in enumerate(data):
+        expandable_row_id = f"expandable-row-{index}"
         html_table += f'''
-            <tr>
-                <td>{row_number}</td>
-                <td>{row['LOCATION']}</td>
-                <td>{google_map_link}</td>
-                <td>{pictures_link}</td>
-                <td>{real_estate_link}</td>
-                <td>{row['net rent / month']}</td>
-                <td>{row['TOTAL SQM OUTDOOR + INDOOR']}</td>
-                <td>{row['Total Parking spots']}</td>
-                <td>{row['Rent/sqm']}</td>
-                <td>{row['€/parking spot']}</td>
-                <td>
-                    <span class="toggle-button" onclick="toggleDetails({index})">+ Info</span>
-                    <div id="details-{index}" class="details">
-                        <p><strong>Flexicar:</strong> {flexicar_link}</p>
-                        <p><strong>OcasionPlus:</strong> {ocasionplus_link}</p>
-                        <p><strong>CTC >10 min?</strong> {ctc_info}</p>
-                    </div>
+            <tr onclick="toggleRow('{expandable_row_id}')">
+                <td>{index + 1}</td>
+                <td>{row[0]}</td>
+                <td>{row[1]}</td>
+                <td>{row[2]}</td>
+                <td>{row[3]}</td>
+                <td>{row[4]}</td>
+                <td>{row[5]}</td>
+                <td>{row[6]}</td>
+                <td>{row[7]}</td>
+                <td>{row[8]}</td>
+                <td class="clickable-info">+info</td>
+            </tr>
+            <tr id="{expandable_row_id}" class="expandable-row">
+                <td colspan="11" class="expanded-content">
+                    <p><strong>Flexicar:</strong> {row[9]}</p>
+                    <p><strong>OcasionPlus:</strong> {row[10]}</p>
+                    <p><strong>CTC:</strong> {row[11]}</p>
+                    <p><strong>Comments:</strong> {row[12]}</p>
                 </td>
             </tr>
         '''
 
     html_table += '''
         </table>
+        <button class="generate-report-button" onclick="generateReport()">Generate Report</button>
     </div>
-    <script>
-        function toggleDetails(index) {
-            var details = document.getElementById('details-' + index);
-            if (details.style.display === 'none' || details.style.display === '') {
-                details.style.display = 'block';
-            } else {
-                details.style.display = 'none';
-            }
-        }
-    </script>
     '''
 
-    return render_template_string(html_table)
+    # Obtención de la fecha actual en formato dd/mm/yyyy
+    current_date = datetime.now().strftime("%d/%m/%Y")
+
+    return render_template_string('''
+    <!doctype html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Report AH Potential Locations</title>
+        <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    </head>
+    <body>
+        <div class="container">
+            <h1>Report AH Potential Locations</h1>
+            <h2>Fecha: {{ date }}</h2>
+            <div>{{ table|safe }}</div>
+        </div>
+    </body>
+    </html>
+    ''', table=html_table, date=current_date)
+
+# Configuración para Vercel
+app = app
 
 if __name__ == '__main__':
-    app.run(debug=True)
-
+    app.run()
