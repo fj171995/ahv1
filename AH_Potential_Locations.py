@@ -5,7 +5,7 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# Ruta principal redirigida a report
+# Ruta principal redirigida a la página de carga del archivo
 @app.route('/')
 def index():
     return redirect(url_for('upload_file'))
@@ -21,7 +21,10 @@ def upload_file():
         if file:
             # Leer el archivo Excel directamente en Pandas
             df = pd.read_excel(file, engine='openpyxl')
-            return redirect(url_for('display_data'))
+            # Guardar el DataFrame en una variable global para su uso en la página de reporte
+            global df_selected
+            df_selected = df.copy()
+            return redirect(url_for('report'))
     return render_template_string('''
     <!doctype html>
     <html lang="es">
@@ -86,15 +89,11 @@ def upload_file():
     </html>
     ''')
 
-@app.route('/report', methods=['POST'])
+@app.route('/report', methods=['GET'])
 def report():
-    # Cargar el archivo Excel desde el formulario de subida
-    file = request.files['file']
-    if not file:
-        return "No file uploaded", 400
-
-    # Cargar el dataframe desde el archivo Excel
-    df = pd.read_excel(file, engine='openpyxl')
+    # Verificar si el dataframe existe
+    if 'df_selected' not in globals():
+        return redirect(url_for('upload_file'))
 
     # Seleccionar las columnas requeridas
     columns = [
@@ -105,10 +104,10 @@ def report():
         'OcasionPlus Around? Insert in comments which one and driving time', 
         'CTC >10 min?'
     ]
-    df_selected = df[columns]
+    df = df_selected[columns]
 
     # Crear nueva columna para el total de plazas de aparcamiento
-    df_selected['Total Parking spots'] = df_selected['Estimated # parking spots outdoor'] + df_selected['# parking spaces for showroom']
+    df['Total Parking spots'] = df['Estimated # parking spots outdoor'] + df['# parking spaces for showroom']
 
     # Construir HTML para la tabla
     html_table = '''
@@ -191,7 +190,7 @@ def report():
             </tr>
     '''
 
-    for index, row in df_selected.iterrows():
+    for index, row in df.iterrows():
         row_number = index + 1
         google_map_link = f'<a href="{row["Google map"]}" target="_blank">Link</a>' if pd.notna(row["Google map"]) else 'N/A'
         pictures_link = f'<a href="{row["Pictures"]}" target="_blank">Link</a>' if pd.notna(row["Pictures"]) else 'N/A'
@@ -243,3 +242,4 @@ def report():
 
 if __name__ == '__main__':
     app.run(debug=True)
+
