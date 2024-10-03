@@ -1,7 +1,8 @@
-from flask import Flask, request, redirect, url_for, render_template_string
+from flask import Flask, request, redirect, url_for, render_template_string, send_file
 from openpyxl import load_workbook
 from io import BytesIO
 from datetime import datetime
+from xhtml2pdf import pisa
 
 app = Flask(__name__)
 
@@ -81,25 +82,21 @@ def upload():
     if file.filename == '':
         return 'No selected file'
     if file:
-        # Cargar el archivo Excel en memoria
         wb = load_workbook(filename=BytesIO(file.read()), data_only=True)
-        # Guardar el workbook en una variable global para su uso posterior
         global uploaded_wb
         uploaded_wb = wb
         return redirect(url_for('display_data'))
 
 @app.route('/data', methods=['GET', 'POST'])
 def display_data():
-    # Verificar si el archivo ha sido subido
     if 'uploaded_wb' not in globals():
         return redirect(url_for('upload_file'))
 
     wb = uploaded_wb
     sheet = wb.active
 
-    # Leer los datos de la hoja de cálculo
     data = []
-    for row in sheet.iter_rows(min_row=2, values_only=True):  # Asumiendo que la primera fila es el encabezado
+    for row in sheet.iter_rows(min_row=2, values_only=True):
         location = row[9]  # Columna J
         google_map = f'<a href="{row[14]}" target="_blank">Link</a>' if row[14] else 'Missing'  # Columna O
         pictures = f'<a href="{row[15]}" target="_blank">Link</a>' if row[15] else 'Missing'  # Columna P
@@ -114,22 +111,16 @@ def display_data():
         ctc = f'<a href="{row[5]}" target="_blank">Link</a>' if row[5] else 'Missing'  # Columna F
         comments = row[40] if row[40] else 'No comments available'  # Columna AO
 
-        data.append((
-            location, google_map, pictures, real_estate_ad,
-            net_rent_month, total_sqm, estimated_parking_spots,
-            rent_per_sqm, cost_per_parking_spot,
-            flexicar, ocasionplus, ctc, comments
-        ))
+        data.append((location, google_map, pictures, real_estate_ad, net_rent_month,
+                     total_sqm, estimated_parking_spots, rent_per_sqm, cost_per_parking_spot,
+                     flexicar, ocasionplus, ctc, comments))
 
-    # Aplicar filtro si se envía desde el formulario
     location_filter = request.args.get('location_filter', '')
     if location_filter:
         data = [row for row in data if row[0] and location_filter.lower() in row[0].lower()]
 
-    # Determinar si se muestra el botón "Generate Report"
     show_generate_report = request.args.get('show_generate_report', 'true').lower() == 'true'
 
-    # Construcción de HTML para mostrar la tabla con diseño responsive y filtro
     html_table = '''
     <style>
         body {
@@ -178,103 +169,8 @@ def display_data():
         a:hover {
             text-decoration: underline;
         }
-        .filter-form {
-            text-align: left;
-            margin-bottom: 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            background-color: #007bff;
-            padding: 10px;
-            border-radius: 5px;
-            color: white;
-        }
-        .filter-form label {
-            font-weight: bold;
-        }
-        .filter-form input[type=text] {
-            padding: 5px;
-            border: none;
-            border-radius: 3px;
-            width: 100%;
-        }
-        .filter-form input[type=submit] {
-            background-color: #ff6200;
-            color: #ffffff;
-            padding: 10px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: bold;
-        }
-        .filter-form input[type=submit]:hover {
-            background-color: #e55b00;
-        }
-        .expandable-row {
-            display: none;
-            background-color: #f9f9f9;
-        }
-        .expanded-content {
-            padding: 15px;
-            text-align: left;
-            color: #333; /* Color oscuro para mejor visibilidad */
-        }
-        .clickable-info {
-            color: #ff6200;
-            font-weight: bold;
-            cursor: pointer;
-        }
-        .generate-report-button {
-            margin-top: 20px;
-            padding: 10px;
-            background-color: #007bff;
-            color: #ffffff;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: bold;
-            width: 100%;
-        }
-        .generate-report-button:hover {
-            background-color: #0056b3;
-        }
-        @media (min-width: 768px) {
-            .filter-form {
-                flex-direction: row;
-                align-items: center;
-            }
-            .filter-form input[type=text] {
-                width: auto;
-            }
-            .generate-report-button {
-                width: auto;
-            }
-        }
     </style>
-    <script>
-        function toggleRow(id) {
-            var row = document.getElementById(id);
-            if (row.style.display === "none" || row.style.display === "") {
-                row.style.display = "table-row";
-            } else {
-                row.style.display = "none";
-            }
-        }
-        
-        function generateReport() {
-            const urlParams = new URLSearchParams(window.location.search);
-            urlParams.set('location_filter', document.getElementById('location_filter').value);
-            urlParams.set('show_generate_report', 'false');
-            const reportUrl = window.location.origin + window.location.pathname + '?' + urlParams.toString();
-            prompt('Shareable Report URL:', reportUrl);
-        }
-    </script>
     <div class="container">
-        <form method="get" class="filter-form">
-            <label for="location_filter">Filter Location:</label>
-            <input type="text" name="location_filter" id="location_filter" placeholder="Location">
-            <input type="submit" value="Apply">
-        </form>
         <table>
             <tr>
                 <th>#</th>
@@ -292,7 +188,6 @@ def display_data():
     '''
 
     for index, row in enumerate(data):
-        expandable_row_id = f"expandable-row-{index}"
         html_table += f'''
             <tr>
                 <td>{index + 1}</td>
@@ -305,15 +200,7 @@ def display_data():
                 <td>{row[6]}</td>
                 <td>{row[7]}</td>
                 <td>{row[8]}</td>
-                <td class="clickable-info" onclick="toggleRow('{expandable_row_id}')">+info</td>
-            </tr>
-            <tr id="{expandable_row_id}" class="expandable-row">
-                <td colspan="11" class="expanded-content">
-                    <p><strong>Flexicar:</strong> {row[9]}</p>
-                    <p><strong>OcasionPlus:</strong> {row[10]}</p>
-                    <p><strong>CTC:</strong> {row[11]}</p>
-                    <p><strong>Comments:</strong> {row[12]}</p>
-                </td>
+                <td>+info</td>
             </tr>
         '''
 
@@ -323,14 +210,13 @@ def display_data():
 
     if show_generate_report:
         html_table += '''
-        <button class="generate-report-button" onclick="generateReport()">Generate Report</button>
+        <button class="generate-report-button" onclick="window.location.href='/generate_pdf?location_filter=' + document.getElementById('location_filter').value">Generate Report as PDF</button>
         '''
 
     html_table += '''
     </div>
     '''
 
-    # Obtención de la fecha actual en formato dd/mm/yyyy
     current_date = datetime.now().strftime("%d/%m/%Y")
 
     return render_template_string('''
@@ -351,6 +237,20 @@ def display_data():
     </body>
     </html>
     ''', table=html_table, date=current_date)
+
+@app.route('/generate_pdf')
+def generate_pdf():
+    location_filter = request.args.get('location_filter', '')
+    html_content = display_data().data.decode('utf-8')
+
+    pdf_file = BytesIO()
+    pisa_status = pisa.CreatePDF(BytesIO(html_content.encode('utf-8')), dest=pdf_file)
+
+    if pisa_status.err:
+        return 'Error generating PDF', 500
+
+    pdf_file.seek(0)
+    return send_file(pdf_file, mimetype='application/pdf', as_attachment=True, download_name='report.pdf')
 
 # Configuración para Vercel
 app = app
