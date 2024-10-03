@@ -1,147 +1,27 @@
-from flask import Flask, request, redirect, url_for, render_template_string, session
-from openpyxl import load_workbook
-from io import BytesIO
+import os
+from flask import Flask, request, redirect, url_for, render_template_string
+import pandas as pd  # type: ignore
 from datetime import datetime
 
 app = Flask(__name__)
-app.secret_key = 'secret_key'  # Necesario para sesiones
 
+# Ruta principal redirigida a report
 @app.route('/')
-def home():
-    if 'uploaded_wb' not in session:
-        return redirect(url_for('upload_file'))
+def index():
+    return redirect(url_for('upload_file'))
 
-    wb = load_workbook(filename=BytesIO(session['uploaded_wb']), data_only=True)
-    sheet = wb.active
-
-    # Leer los datos de la hoja de cálculo
-    data = []
-    for row in sheet.iter_rows(min_row=2, values_only=True):
-        data.append(row)
-
-    # Construcción de HTML para la tabla con los hipervínculos y el botón "+info"
-    html_table = '''
-    <style>
-        body {
-            font-family: 'Roboto', sans-serif;
-            background-color: #f4f4f4;
-            padding: 20px;
-        }
-        .container {
-            max-width: 1200px;
-            margin: auto;
-            background: #ffffff;
-            padding: 20px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-            border-radius: 10px;
-        }
-        h1, h2 {
-            color: #333;
-            font-weight: 700;
-            text-align: center;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 20px 0;
-        }
-        th, td {
-            padding: 15px;
-            text-align: center;
-            border-bottom: 1px solid #ddd;
-        }
-        th {
-            background-color: #ff6200;
-            color: white;
-        }
-        tr:hover {
-            background-color: #f1f1f1;
-        }
-        a {
-            color: #ff6200;
-            text-decoration: none;
-            font-weight: bold;
-        }
-        a:hover {
-            text-decoration: underline;
-        }
-        .info-button {
-            cursor: pointer;
-            color: #007bff;
-            text-decoration: underline;
-            background: none;
-            border: none;
-            font-size: 1em;
-            font-weight: bold;
-        }
-    </style>
-    <div class="container">
-        <h1>Report AH Potential Locations</h1>
-        <h2>Fecha: ''' + datetime.now().strftime("%d/%m/%Y") + '''</h2>
-        <table>
-            <tr>
-                <th>Location</th>
-                <th>Google map</th>
-                <th>Pictures</th>
-                <th>Real estate ad</th>
-                <th>Net rent / month</th>
-                <th>Total sqm outdoor + indoor</th>
-                <th>Total parking spots</th>
-                <th>Rent/sqm</th>
-                <th>€/parking spot</th>
-                <th>+info</th>
-            </tr>
-    '''
-
-    for row in data:
-        html_table += f'''
-            <tr>
-                <td>{row[0]}</td>
-                <td><a href="{row[1]}" target="_blank">Link</a></td>
-                <td><a href="{row[2]}" target="_blank">Link</a></td>
-                <td><a href="{row[3]}" target="_blank">Link</a></td>
-                <td>{row[4]}</td>
-                <td>{row[5]}</td>
-                <td>{row[6]}</td>
-                <td>{row[7]}</td>
-                <td>{row[8]}</td>
-                <td>
-                    <button class="info-button" onclick="alert('Flexicar: {row[9]}\\nOcasionPlus: {row[10]}\\nCTC: {row[11]}')">
-                        + Info
-                    </button>
-                </td>
-            </tr>
-        '''
-
-    html_table += '''
-        </table>
-        <form action="/new_report" method="get">
-            <input type="submit" value="New Report" style="background-color: #ff6200; color: #fff; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer;">
-        </form>
-    </div>
-    '''
-
-    return render_template_string(html_table)
-
-@app.route('/new_report', methods=['GET', 'POST'])
-def new_report():
-    if request.method == 'POST':
-        password = request.form['password']
-        if password == 'desde54':
-            return redirect(url_for('upload_file'))
-        else:
-            return 'Contraseña incorrecta, intenta nuevamente.'
-
-    return '''
-    <form method="post">
-        <label for="password">Contraseña:</label>
-        <input type="password" name="password" required>
-        <input type="submit" value="Submit">
-    </form>
-    '''
-
-@app.route('/upload')
+@app.route('/upload', methods=['GET', 'POST'])
 def upload_file():
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            return 'No file part'
+        file = request.files['file']
+        if file.filename == '':
+            return 'No selected file'
+        if file:
+            # Leer el archivo Excel directamente en Pandas
+            df = pd.read_excel(file, engine='openpyxl')
+            return redirect(url_for('display_data'))
     return render_template_string('''
     <!doctype html>
     <html lang="es">
@@ -196,7 +76,7 @@ def upload_file():
     <body>
         <div class="container">
             <h1>Sube el archivo Excel</h1>
-            <form method="post" enctype="multipart/form-data" action="/upload_excel">
+            <form method="post" enctype="multipart/form-data">
                 <input type="file" name="file" required>
                 <br>
                 <input type="submit" value="Subir archivo">
@@ -206,17 +86,160 @@ def upload_file():
     </html>
     ''')
 
-@app.route('/upload_excel', methods=['POST'])
-def upload_excel():
-    if 'file' not in request.files:
-        return 'No file part'
+@app.route('/report', methods=['POST'])
+def report():
+    # Cargar el archivo Excel desde el formulario de subida
     file = request.files['file']
-    if file.filename == '':
-        return 'No selected file'
-    if file:
-        # Cargar el archivo Excel en memoria
-        session['uploaded_wb'] = file.read()
-        return redirect(url_for('home'))
+    if not file:
+        return "No file uploaded", 400
+
+    # Cargar el dataframe desde el archivo Excel
+    df = pd.read_excel(file, engine='openpyxl')
+
+    # Seleccionar las columnas requeridas
+    columns = [
+        'LOCATION', 'Google map', 'Pictures', 'Real Estate ad', 'net rent / month', 
+        'TOTAL SQM OUTDOOR + INDOOR', 'Estimated # parking spots outdoor', 
+        '# parking spaces for showroom', 'Rent/sqm', '€/parking spot', 
+        'Flexicar Around? Insert in comments which one and driving time', 
+        'OcasionPlus Around? Insert in comments which one and driving time', 
+        'CTC >10 min?'
+    ]
+    df_selected = df[columns]
+
+    # Crear nueva columna para el total de plazas de aparcamiento
+    df_selected['Total Parking spots'] = df_selected['Estimated # parking spots outdoor'] + df_selected['# parking spaces for showroom']
+
+    # Construir HTML para la tabla
+    html_table = '''
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #f4f4f4;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: auto;
+            background: #ffffff;
+            padding: 20px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+        }
+        h1, h2 {
+            color: #333;
+            font-weight: 700;
+            text-align: center;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            padding: 15px;
+            text-align: center;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #ff6200;
+            color: white;
+        }
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+        a {
+            color: #ff6200;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .details {
+            display: none;
+            padding-top: 10px;
+        }
+        .toggle-button {
+            cursor: pointer;
+            color: #ff6200;
+            font-weight: bold;
+            text-decoration: underline;
+        }
+        @media screen and (max-width: 768px) {
+            table, th, td {
+                font-size: 14px;
+            }
+        }
+    </style>
+    <div class="container">
+        <h1>Report AH Potential Locations</h1>
+        <h2>Fecha: ''' + datetime.now().strftime("%d/%m/%Y") + '''</h2>
+        <table>
+            <tr>
+                <th>#</th>
+                <th>Location</th>
+                <th>Google map</th>
+                <th>Pictures</th>
+                <th>Real estate ad</th>
+                <th>Net rent / month</th>
+                <th>Total sqm outdoor + indoor</th>
+                <th>Total parking spots</th>
+                <th>Rent/sqm</th>
+                <th>€/parking spot</th>
+                <th style="width: 15%;">+ info</th>
+            </tr>
+    '''
+
+    for index, row in df_selected.iterrows():
+        row_number = index + 1
+        google_map_link = f'<a href="{row["Google map"]}" target="_blank">Link</a>' if pd.notna(row["Google map"]) else 'N/A'
+        pictures_link = f'<a href="{row["Pictures"]}" target="_blank">Link</a>' if pd.notna(row["Pictures"]) else 'N/A'
+        real_estate_link = f'<a href="{row["Real Estate ad"]}" target="_blank">Link</a>' if pd.notna(row["Real Estate ad"]) else 'N/A'
+
+        flexicar_link = f'<a href="{row["Flexicar Around? Insert in comments which one and driving time"]}" target="_blank">Link</a>' if pd.notna(row["Flexicar Around? Insert in comments which one and driving time"]) else 'N/A'
+        ocasionplus_link = f'<a href="{row["OcasionPlus Around? Insert in comments which one and driving time"]}" target="_blank">Link</a>' if pd.notna(row["OcasionPlus Around? Insert in comments which one and driving time"]) else 'N/A'
+        ctc_info = row['CTC >10 min?'] if pd.notna(row['CTC >10 min?']) else 'N/A'
+
+        html_table += f'''
+            <tr>
+                <td>{row_number}</td>
+                <td>{row['LOCATION']}</td>
+                <td>{google_map_link}</td>
+                <td>{pictures_link}</td>
+                <td>{real_estate_link}</td>
+                <td>{row['net rent / month']}</td>
+                <td>{row['TOTAL SQM OUTDOOR + INDOOR']}</td>
+                <td>{row['Total Parking spots']}</td>
+                <td>{row['Rent/sqm']}</td>
+                <td>{row['€/parking spot']}</td>
+                <td>
+                    <span class="toggle-button" onclick="toggleDetails({index})">+ Info</span>
+                    <div id="details-{index}" class="details">
+                        <p><strong>Flexicar:</strong> {flexicar_link}</p>
+                        <p><strong>OcasionPlus:</strong> {ocasionplus_link}</p>
+                        <p><strong>CTC >10 min?</strong> {ctc_info}</p>
+                    </div>
+                </td>
+            </tr>
+        '''
+
+    html_table += '''
+        </table>
+    </div>
+    <script>
+        function toggleDetails(index) {
+            var details = document.getElementById('details-' + index);
+            if (details.style.display === 'none' || details.style.display === '') {
+                details.style.display = 'block';
+            } else {
+                details.style.display = 'none';
+            }
+        }
+    </script>
+    '''
+
+    return render_template_string(html_table)
 
 if __name__ == '__main__':
-    app.run()
+    app.run(debug=True)
