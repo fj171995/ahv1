@@ -32,6 +32,8 @@ def upload_file():
                 box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
                 border-radius: 10px;
                 text-align: center;
+                max-width: 90%;
+                width: 400px;
             }
             h1 {
                 color: #333;
@@ -136,7 +138,7 @@ def display_data():
             padding: 20px;
         }
         .container {
-            max-width: 1200px;
+            max-width: 100%;
             margin: auto;
             background: #ffffff;
             padding: 20px;
@@ -152,11 +154,14 @@ def display_data():
             width: 100%;
             border-collapse: collapse;
             margin: 20px 0;
+            overflow-x: auto;
+            display: block;
         }
         th, td {
             padding: 15px;
             text-align: center;
             border-bottom: 1px solid #ddd;
+            font-size: 0.9em;
         }
         th {
             background-color: #ff6200;
@@ -177,7 +182,7 @@ def display_data():
             text-align: left;
             margin-bottom: 20px;
             display: flex;
-            align-items: center;
+            flex-direction: column;
             gap: 10px;
             background-color: #007bff;
             padding: 10px;
@@ -191,11 +196,12 @@ def display_data():
             padding: 5px;
             border: none;
             border-radius: 3px;
+            width: 100%;
         }
         .filter-form input[type=submit] {
             background-color: #ff6200;
             color: #ffffff;
-            padding: 5px 10px;
+            padding: 10px;
             border: none;
             border-radius: 5px;
             cursor: pointer;
@@ -220,16 +226,29 @@ def display_data():
         }
         .generate-report-button {
             margin-top: 20px;
-            padding: 10px 20px;
+            padding: 10px;
             background-color: #007bff;
             color: #ffffff;
             border: none;
             border-radius: 5px;
             cursor: pointer;
             font-weight: bold;
+            width: 100%;
         }
         .generate-report-button:hover {
             background-color: #0056b3;
+        }
+        @media (min-width: 768px) {
+            .filter-form {
+                flex-direction: row;
+                align-items: center;
+            }
+            .filter-form input[type=text] {
+                width: auto;
+            }
+            .generate-report-button {
+                width: auto;
+            }
         }
     </style>
     <script>
