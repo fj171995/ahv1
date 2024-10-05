@@ -5,6 +5,9 @@ from datetime import datetime
 
 app = Flask(__name__)
 
+# Variable global para almacenar el workbook subido
+uploaded_wb = None
+
 @app.route('/')
 def upload_file():
     return render_template_string('''
@@ -77,19 +80,19 @@ def upload_file():
 @app.route('/upload', methods=['POST'])
 def upload():
     if 'file' not in request.files:
-        return 'No file part'
+        return 'No se encontró el archivo'
     file = request.files['file']
     if file.filename == '':
-        return 'No selected file'
+        return 'No se seleccionó ningún archivo'
     if file:
-        wb = load_workbook(filename=BytesIO(file.read()), data_only=True)
         global uploaded_wb
-        uploaded_wb = wb
+        uploaded_wb = load_workbook(filename=BytesIO(file.read()), data_only=True)
         return redirect(url_for('display_data'))
 
 @app.route('/data', methods=['GET'])
 def display_data():
-    if 'uploaded_wb' not in globals():
+    global uploaded_wb
+    if uploaded_wb is None:
         return redirect(url_for('upload_file'))
 
     wb = uploaded_wb
@@ -286,7 +289,7 @@ def display_data():
 
 @app.route('/generate_report', methods=['POST'])
 def generate_report():
-    if 'uploaded_wb' not in globals():
+    if uploaded_wb is None:
         return redirect(url_for('upload_file'))
 
     wb = uploaded_wb
@@ -364,7 +367,31 @@ def generate_report():
             a:hover {
                 text-decoration: underline;
             }
+            .expandable-row {
+                display: none;
+                background-color: #f9f9f9;
+            }
+            .expanded-content {
+                padding: 15px;
+                text-align: left;
+                color: #333;
+            }
+            .clickable-info {
+                color: #ff4c00;
+                font-weight: bold;
+                cursor: pointer;
+            }
         </style>
+        <script>
+            function toggleRow(id) {
+                var row = document.getElementById(id);
+                if (row.style.display === "none" || row.style.display === "") {
+                    row.style.display = "table-row";
+                } else {
+                    row.style.display = "none";
+                }
+            }
+        </script>
     </head>
     <body>
         <div class="container">
@@ -396,7 +423,10 @@ def generate_report():
                     <td>{{ row[6] }}</td>
                     <td>{{ row[7] }}</td>
                     <td>{{ row[8] }}</td>
-                    <td>
+                    <td class="clickable-info" onclick="toggleRow('expandable-row-{{ index }}')">+info</td>
+                </tr>
+                <tr id="expandable-row-{{ index }}" class="expandable-row">
+                    <td colspan="11" class="expanded-content">
                         <p><strong>Flexicar:</strong> {{ row[9]|safe }}</p>
                         <p><strong>OcasionPlus:</strong> {{ row[10]|safe }}</p>
                         <p><strong>CTC:</strong> {{ row[11]|safe }}</p>
@@ -420,6 +450,5 @@ app = app
 
 if __name__ == '__main__':
     app.run()
-
 
 
